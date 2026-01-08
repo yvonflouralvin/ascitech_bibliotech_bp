@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir PyPDF2 watchdog psycopg2-binary
 RUN mkdir -p /books /books_processed
 
 # Dossier à surveiller
-VOLUME ["/books"]
+#VOLUME ["/books"]
 
 # Lancer le script de surveillance au démarrage
 CMD ["python", "main.py"]
