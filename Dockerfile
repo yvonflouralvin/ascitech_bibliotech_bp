@@ -15,6 +15,14 @@ COPY main.py .
 
 # Installer les dépendances Python
 RUN pip install --no-cache-dir PyPDF2 watchdog psycopg2-binary
+RUN echo "Maintenant on va run l'application"
+RUN echo "Maintenant on va run l'application"
+RUN echo "Maintenant on va run l'application"
+RUN echo "Maintenant on va run l'application"
+RUN echo "Maintenant on va run l'application"
+RUN echo "Maintenant on va run l'application"
+RUN echo "Maintenant on va run l'application"
+RUN echo "Maintenant on va run l'application"
 
 # Créer les dossiers pour les PDFs et les résultats
 #RUN mkdir -p /books /books_processed
