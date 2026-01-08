@@ -18,7 +18,7 @@ lock_file = os.path.join(output_folder, "lock.json")
 
 def mark_as_processed(filename):
     """
-    Connecte à PostgreSQL et met à jour le champ allready_process = True
+    Connecte à PostgreSQL et met à jour le champ already_process = True
     pour le fichier donné.
     """
     # Informations de connexion à adapter
