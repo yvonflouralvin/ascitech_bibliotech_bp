@@ -50,6 +50,9 @@ def mark_as_processed(filename):
 
 # Fonction pour traiter un PDF
 def process_pdf(file_path):
+    print("Nouveau Fichier déposé")
+    time.sleep(10)
+    print("Debut du traitement")
     filename = os.path.basename(file_path)
     pdf_name = os.path.splitext(filename)[0]
     subfolder_path = os.path.join(output_folder, pdf_name)
