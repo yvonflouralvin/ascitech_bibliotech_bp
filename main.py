@@ -168,6 +168,8 @@ def process_pdf(file_path):
                 f"content_{idx:02d}.txt"
             )
 
+            print(f"Process [{filename}] - Page [{idx}] ")
+
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(base64_image)
 
