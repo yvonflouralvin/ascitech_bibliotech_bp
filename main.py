@@ -13,6 +13,8 @@ from watchdog.events import FileSystemEventHandler
 import psycopg2
 from psycopg2 import sql
 
+import shutil
+import traceback
 
 # =============================
 # CONFIGURATION DES DOSSIERS
@@ -26,6 +28,52 @@ os.makedirs(output_folder, exist_ok=True)
 
 lock_file = os.path.join(output_folder, "lock.json")
 
+db_config = {
+    "host": os.environ.get("DB_HOST", "postgres_host"),
+    "port": os.environ.get("DB_PORT", 5432),
+    "dbname": os.environ.get("DB_NAME", "ma_base"),
+    "user": os.environ.get("DB_USER", "mon_user"),
+    "password": os.environ.get("DB_PASSWORD", "mon_password"),
+}
+
+def mark_as_error(book_id, error_md, source_file, dest_folder):
+    """
+    Nettoyage + mise à jour DB en cas d'erreur
+    """
+    # Suppression source
+    if os.path.exists(source_file):
+        os.remove(source_file)
+
+    # Suppression destination
+    if os.path.exists(dest_folder):
+        shutil.rmtree(dest_folder, ignore_errors=True)
+
+    # Suppression lock
+    if os.path.exists(lock_file):
+        os.remove(lock_file)
+
+    try:
+        conn = psycopg2.connect(**db_config)
+        cur = conn.cursor()
+
+        query = """
+            UPDATE school_book
+            SET status = 'Error',
+                processing_error = %s
+            WHERE id = %s
+        """
+
+        cur.execute(query, (error_md, book_id))
+        conn.commit()
+
+        cur.close()
+        conn.close()
+
+        print(f"[ERROR HANDLED] Livre {book_id} marqué en erreur.")
+
+    except Exception as db_error:
+        print(f"[CRITICAL DB ERROR] {db_error}")
+
 
 # =============================
 # POSTGRESQL
@@ -35,13 +83,6 @@ def mark_as_processed(book_id, page_count):
     """
     Met à jour already_process = TRUE et page_count
     """
-    db_config = {
-        "host": os.environ.get("DB_HOST", "postgres_host"),
-        "port": os.environ.get("DB_PORT", 5432),
-        "dbname": os.environ.get("DB_NAME", "ma_base"),
-        "user": os.environ.get("DB_USER", "mon_user"),
-        "password": os.environ.get("DB_PASSWORD", "mon_password"),
-    }
 
     try:
         conn = psycopg2.connect(**db_config)
@@ -64,6 +105,7 @@ def mark_as_processed(book_id, page_count):
 
     except Exception as e:
         print(f"[DB ERROR] {book_id} : {e}")
+
 
 
 # =============================
@@ -147,6 +189,24 @@ def process_pdf(file_path):
 
     except Exception as e:
         print(f"[ERROR] {filename} : {e}")
+        error_md = f"""# ❌ Erreur de traitement du livre `{book_id}`
+        ## 📄 Fichier
+        `{filename}`
+
+        ## 🧨 Exception
+        ```text
+        {str(e)}
+
+        🧵 Traceback
+        {traceback.format_exc()}
+        """
+        mark_as_error(
+            book_id=book_id,
+            error_md=error_md,
+            source_file=file_path,
+            dest_folder=dest_folder
+            )
+
 
 
 # =============================
