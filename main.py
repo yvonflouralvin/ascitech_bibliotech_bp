@@ -11,7 +11,7 @@ import os
 
 # Dossiers
 parent_folder = "files/books"
-output_folder = "files/books_processed" 
+output_folder = "files/books_content" 
 
 os.makedirs(parent_folder, exist_ok=True)
 os.makedirs(output_folder, exist_ok=True)
