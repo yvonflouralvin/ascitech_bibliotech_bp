@@ -92,7 +92,7 @@ def process_pdf(file_path):
         print(f"Traitement terminé pour {filename}")
 
         # Mettre à jour la base PostgreSQL
-        mark_as_processed(filename)
+        mark_as_processed(pdf_name)
 
     except Exception as e:
         print(f"Erreur avec {filename}: {e}")
