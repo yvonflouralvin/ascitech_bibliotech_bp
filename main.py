@@ -7,6 +7,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import psycopg2
 from psycopg2 import sql
+import os
 
 # Dossiers
 parent_folder = "/books"
@@ -22,11 +23,11 @@ def mark_as_processed(filename):
     """
     # Informations de connexion à adapter
     db_config = {
-        "host": "postgres_host",
-        "port": 5432,
-        "dbname": "ma_base",
-        "user": "mon_user",
-        "password": "mon_password"
+        "host": os.environ.get('DB_HOST', "postgres_host"),
+        "port": os.environ.get('DB_PORT', 5432),
+        "dbname": os.environ.get('DB_NAME', "ma_base"),
+        "user": os.environ.get('DB_USER', "mon_user"),
+        "password": os.environ.get('DB_PASSWORD', "mon_password")
     }
 
     try:
@@ -34,7 +35,7 @@ def mark_as_processed(filename):
         cur = conn.cursor()
 
         # Exécuter la mise à jour
-        query = sql.SQL("UPDATE books_table SET allready_process = TRUE WHERE filename = %s")
+        query = sql.SQL("UPDATE school_book SET allready_process = TRUE WHERE id = %s")
         cur.execute(query, (filename,))
         conn.commit()
 
