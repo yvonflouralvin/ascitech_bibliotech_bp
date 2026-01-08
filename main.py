@@ -111,7 +111,6 @@ def mark_as_processed(book_id, page_count):
 # =============================
 # TRAITEMENT PDF
 # =============================
-
 def process_pdf(file_path):
     print("Nouveau fichier détecté, attente de stabilisation...")
     time.sleep(10)
@@ -150,44 +149,41 @@ def process_pdf(file_path):
 
         print(f"Traitement de {filename} à partir de la page {start_page + 1}")
 
-        # Conversion PDF → images
-        images = convert_from_path(
-            file_path,
-            dpi=200,
-            first_page=start_page + 1
-        )
+        # Conversion page par page pour limiter la mémoire
+        for i in range(start_page, total_pages):
+            print(f"[INFO] Conversion page {i+1}/{total_pages} de {filename}")
 
-        for idx, image in enumerate(images, start=start_page + 1):
+            # convert_from_path pour une seule page
+            images = convert_from_path(
+                file_path,
+                dpi=200,
+                first_page=i+1,
+                last_page=i+1
+            )
+
+            image = images[0]  # une seule page
             buffer = BytesIO()
             image.save(buffer, format="PNG")
-
             base64_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
             output_path = os.path.join(
                 subfolder_path,
-                f"content_{idx:02d}.txt"
+                f"content_{i+1:02d}.txt"
             )
-
-            print(f"Process [{filename}] - Page [{idx}] ")
-
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(base64_image)
 
             # Mise à jour du lock
             with open(lock_file, "w", encoding="utf-8") as f_lock:
-                json.dump(
-                    {"file": filename, "page": idx},
-                    f_lock
-                )
+                json.dump({"file": filename, "page": i+1}, f_lock)
 
         # Fin du PDF
         if os.path.exists(lock_file):
             os.remove(lock_file)
 
-        print(f"Traitement terminé pour {filename}")
-
-        # Update DB
+        # Update PostgreSQL
         mark_as_processed(book_id, total_pages)
+        print(f"Traitement terminé pour {filename}")
 
     except Exception as e:
         print(f"[ERROR] {filename} : {e}")
