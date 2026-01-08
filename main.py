@@ -90,7 +90,7 @@ def mark_as_processed(book_id, page_count):
 
         query = sql.SQL("""
             UPDATE school_book
-            SET already_process = TRUE,
+            SET status = 'Done',
                 page = %s
             WHERE id = %s
         """)
