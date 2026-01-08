@@ -58,7 +58,7 @@ def mark_as_error(book_id, error_md, source_file, dest_folder):
 
         query = """
             UPDATE school_book
-            SET status = 'Error',
+            SET status = 'error',
                 processing_error = %s
             WHERE id = %s
         """
@@ -90,7 +90,7 @@ def mark_as_processed(book_id, page_count):
 
         query = sql.SQL("""
             UPDATE school_book
-            SET status = 'Done',
+            SET status = 'done',
                 page = %s
             WHERE id = %s
         """)
