@@ -35,7 +35,7 @@ def mark_as_processed(filename):
         cur = conn.cursor()
 
         # Exécuter la mise à jour
-        query = sql.SQL("UPDATE school_book SET allready_process = TRUE WHERE id = %s")
+        query = sql.SQL("UPDATE school_book SET already_process = TRUE WHERE id = %s")
         cur.execute(query, (filename,))
         conn.commit()
 
