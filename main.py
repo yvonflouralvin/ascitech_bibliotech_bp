@@ -10,9 +10,12 @@ from psycopg2 import sql
 import os
 
 # Dossiers
-parent_folder = "books"
-output_folder = "books_processed"
+parent_folder = "files/books"
+output_folder = "files/books_processed" 
+
+os.makedirs(parent_folder, exist_ok=True)
 os.makedirs(output_folder, exist_ok=True)
+
 lock_file = os.path.join(output_folder, "lock.json")
 
 
