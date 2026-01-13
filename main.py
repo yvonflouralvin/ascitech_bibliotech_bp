@@ -37,7 +37,7 @@ def get_all_books():
     try:
         conn = psycopg2.connect(**db_config)
         cur = conn.cursor()
-        cur.execute("SELECT id, filename, status FROM school_book")
+        cur.execute("SELECT id, book_file, status FROM school_book")
         books = cur.fetchall()
         cur.close()
         conn.close()
