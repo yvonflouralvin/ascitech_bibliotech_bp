@@ -3,23 +3,16 @@ import time
 import json
 import base64
 from io import BytesIO
-
 from PyPDF2 import PdfReader
 from pdf2image import convert_from_path
-
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
-
 import psycopg2
 from psycopg2 import sql
-
 import shutil
 import traceback
 
 # =============================
 # CONFIGURATION DES DOSSIERS
 # =============================
-
 parent_folder = "files/books"
 output_folder = "files/books_content"
 
@@ -36,111 +29,71 @@ db_config = {
     "password": os.environ.get("DB_PASSWORD", "mon_password"),
 }
 
-def mark_as_error(book_id, error_md, source_file, dest_folder):
+# =============================
+# FONCTIONS DB
+# =============================
+def get_all_books():
+    """Retourne tous les livres avec id, filename et status"""
+    try:
+        conn = psycopg2.connect(**db_config)
+        cur = conn.cursor()
+        cur.execute("SELECT id, filename, status FROM school_book")
+        books = cur.fetchall()
+        cur.close()
+        conn.close()
+        return books
+    except Exception as e:
+        print(f"[DB ERROR] Impossible de récupérer les livres: {e}")
+        return []
+
+def update_book_status(book_id, status, page_count=None, error_md=None):
     """
-    Nettoyage + mise à jour DB en cas d'erreur
+    Met à jour le status d'un livre dans la DB.
+    - status : 'done', 'error', etc.
+    - page_count : nombre de pages (si applicable)
+    - error_md : message d'erreur Markdown (si applicable)
     """
-    # Suppression source
-    if os.path.exists(source_file):
-        os.remove(source_file)
-
-    # Suppression destination
-    if os.path.exists(dest_folder):
-        shutil.rmtree(dest_folder, ignore_errors=True)
-
-    # Suppression lock
-    if os.path.exists(lock_file):
-        os.remove(lock_file)
-
     try:
         conn = psycopg2.connect(**db_config)
         cur = conn.cursor()
 
         query = """
             UPDATE school_book
-            SET status = 'error',
-                processing_error = %s
+            SET status = %s,
+                page = COALESCE(%s, page),
+                processing_error = COALESCE(%s, processing_error)
             WHERE id = %s
         """
-
-        cur.execute(query, (error_md, book_id))
+        cur.execute(query, (status, page_count, error_md, book_id))
         conn.commit()
-
         cur.close()
         conn.close()
 
-        print(f"[ERROR HANDLED] Livre {book_id} marqué en erreur.")
-
-    except Exception as db_error:
-        print(f"[CRITICAL DB ERROR] {db_error}")
-
-
-# =============================
-# POSTGRESQL
-# =============================
-
-def mark_as_processed(book_id, page_count):
-    """
-    Met à jour already_process = TRUE et page_count
-    """
-
-    try:
-        conn = psycopg2.connect(**db_config)
-        cur = conn.cursor()
-
-        query = sql.SQL("""
-            UPDATE school_book
-            SET status = 'done',
-                page = %s
-            WHERE id = %s
-        """)
-
-        cur.execute(query, (page_count, book_id))
-        conn.commit()
-
-        cur.close()
-        conn.close()
-
-        print(f"[DB] Livre {book_id} marqué comme traité ({page_count} pages)")
+        if status == "done":
+            print(f"[DB] Livre {book_id} marqué comme traité ({page_count} pages)")
+        elif status == "error":
+            print(f"[DB] Livre {book_id} marqué en erreur")
+        else:
+            print(f"[DB] Livre {book_id} mis à jour : status={status}")
 
     except Exception as e:
-        print(f"[DB ERROR] {book_id} : {e}")
-
-
+        print(f"[DB ERROR] Livre {book_id} : {e}")
 
 # =============================
 # TRAITEMENT PDF
 # =============================
-def process_pdf(file_path):
-    print("Nouveau fichier détecté, attente de stabilisation...")
-    time.sleep(10)
-
+def process_pdf(book_id, file_path):
     filename = os.path.basename(file_path)
-    book_id = os.path.splitext(filename)[0]
     subfolder_path = os.path.join(output_folder, book_id)
-
-    # Déjà traité ?
-    if os.path.exists(subfolder_path):
-        if not os.path.exists(lock_file):
-            print(f"{filename} déjà traité, ignoré.")
-            return
-
-        with open(lock_file, "r", encoding="utf-8") as f:
-            lock = json.load(f)
-
-        if lock.get("file") != filename:
-            print(f"{filename} déjà traité, ignoré.")
-            return
 
     os.makedirs(subfolder_path, exist_ok=True)
 
     try:
-        # Nombre total de pages
         reader = PdfReader(file_path)
         total_pages = len(reader.pages)
-
-        # Reprise
         start_page = 0
+
+        # Reprise avec lock
         if os.path.exists(lock_file):
             with open(lock_file, "r", encoding="utf-8") as f:
                 lock = json.load(f)
@@ -149,27 +102,16 @@ def process_pdf(file_path):
 
         print(f"Traitement de {filename} à partir de la page {start_page + 1}")
 
-        # Conversion page par page pour limiter la mémoire
+        # Conversion page par page
         for i in range(start_page, total_pages):
             print(f"[INFO] Conversion page {i+1}/{total_pages} de {filename}")
-
-            # convert_from_path pour une seule page
-            images = convert_from_path(
-                file_path,
-                dpi=200,
-                first_page=i+1,
-                last_page=i+1
-            )
-
-            image = images[0]  # une seule page
+            images = convert_from_path(file_path, dpi=200, first_page=i+1, last_page=i+1)
+            image = images[0]
             buffer = BytesIO()
             image.save(buffer, format="PNG")
             base64_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-            output_path = os.path.join(
-                subfolder_path,
-                f"content_{i+1:02d}.txt"
-            )
+            output_path = os.path.join(subfolder_path, f"content_{i+1:02d}.txt")
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(base64_image)
 
@@ -177,68 +119,96 @@ def process_pdf(file_path):
             with open(lock_file, "w", encoding="utf-8") as f_lock:
                 json.dump({"file": filename, "page": i+1}, f_lock)
 
-        # Fin du PDF
+        # Suppression du lock
         if os.path.exists(lock_file):
             os.remove(lock_file)
 
-        # Update PostgreSQL
-        mark_as_processed(book_id, total_pages)
+        update_book_status(book_id, status="done", page_count=total_pages)
         print(f"Traitement terminé pour {filename}")
 
     except Exception as e:
         print(f"[ERROR] {filename} : {e}")
         error_md = f"""# ❌ Erreur de traitement du livre `{book_id}`
-        ## 📄 Fichier
-        `{filename}`
+## 📄 Fichier
+`{filename}`
 
-        ## 🧨 Exception
-        ```text
-        {str(e)}
+## 🧨 Exception
+```text
+{str(e)}
 
-        🧵 Traceback
-        {traceback.format_exc()}
-        """
-        mark_as_error(
-            book_id=book_id,
-            error_md=error_md,
-            source_file=file_path,
-            dest_folder=dest_folder
-            )
+Traceback
+{traceback.format_exc()}
+```"""
+        # Nettoyage fichiers
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        if os.path.exists(subfolder_path):
+            shutil.rmtree(subfolder_path, ignore_errors=True)
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
 
-
-
-# =============================
-# WATCHDOG
-# =============================
-
-class PDFHandler(FileSystemEventHandler):
-    def on_created(self, event):
-        if not event.is_directory and event.src_path.lower().endswith(".pdf"):
-            print(f"Nouveau fichier déposé : {event.src_path}")
-            process_pdf(event.src_path)
-
-
-observer = Observer()
-observer.schedule(PDFHandler(), path=parent_folder, recursive=False)
-observer.start()
-
-print("Surveillance du dossier files/books...")
-
+        update_book_status(book_id, status="error", error_md=error_md)
 
 # =============================
-# SERVICE TOUJOURS ACTIF
+# LOGIQUE DE REPRISE
 # =============================
+def should_process(book):
+    """
+    Vérifie si le livre doit être traité selon les règles :
+    1️⃣ status != done & dossier book_content inexistant
+    2️⃣ status != done & dossier existant & source existe & pages diffèrent
+    3️⃣ status = done & dossier existant & source existe & pages diffèrent
+    """
+    book_id, filename, status = book
+    source_file = os.path.join(parent_folder, filename)
+    subfolder_path = os.path.join(output_folder, book_id)
 
-while True:
-    try:
-        time.sleep(1)
-    except KeyboardInterrupt:
-        print("Arrêt manuel demandé.")
-        observer.stop()
-        break
-    except Exception as e:
-        print(f"[SERVICE ERROR] {e}")
-        continue
+    # Cas 1 et 2
+    if status != "done":
+        if not os.path.exists(subfolder_path):
+            return True
+        if os.path.exists(subfolder_path) and os.path.exists(source_file):
+            try:
+                source_pages = len(PdfReader(source_file).pages)
+                book_pages = len([f for f in os.listdir(subfolder_path) if f.endswith(".txt")])
+                if source_pages != book_pages:
+                    return True
+            except Exception as e:
+                print(f"[CHECK ERROR] {filename}: {e}")
+                return True
+        return False
 
-observer.join()
-print("Service arrêté.")
+    # Cas 3
+    if status == "done" and os.path.exists(subfolder_path) and os.path.exists(source_file):
+        try:
+            source_pages = len(PdfReader(source_file).pages)
+            book_pages = len([f for f in os.listdir(subfolder_path) if f.endswith(".txt")])
+            if source_pages != book_pages:
+                return True
+        except Exception as e:
+            print(f"[CHECK ERROR] {filename}: {e}")
+            return True
+
+    return False
+
+# =============================
+# SERVICE PRINCIPAL
+# =============================
+if __name__ == "__main__":
+    print("Service de traitement PDF démarré...")
+    while True:
+        try:
+            books = get_all_books()
+            for book in books:
+                if should_process(book):
+                    book_id, filename, _ = book
+                    source_file = os.path.join(parent_folder, filename)
+                    if os.path.exists(source_file):
+                        process_pdf(book_id, source_file)
+            time.sleep(60*int(os.environ.get("SLEEP_MIN", 1))) # intervalle entre vérifications
+        except KeyboardInterrupt:
+            print("Arrêt manuel demandé.")
+            break
+        except Exception as e:
+            print(f"[SERVICE ERROR] {e}")
+            time.sleep(60*int(os.environ.get("SLEEP_MIN", 1)))
