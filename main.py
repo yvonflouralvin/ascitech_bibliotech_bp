@@ -33,11 +33,11 @@ db_config = {
 # FONCTIONS DB
 # =============================
 def get_all_books():
-    """Retourne tous les livres avec id, filename et status"""
+    """Retourne tous les livres avec id et status"""
     try:
         conn = psycopg2.connect(**db_config)
         cur = conn.cursor()
-        cur.execute("SELECT id, book_file, status FROM school_book")
+        cur.execute("SELECT id, status FROM school_book")
         books = cur.fetchall()
         cur.close()
         conn.close()
@@ -82,9 +82,13 @@ def update_book_status(book_id, status, page_count=None, error_md=None):
 # =============================
 # TRAITEMENT PDF
 # =============================
-def process_pdf(book_id, file_path):
-    filename = os.path.basename(file_path)
+def process_pdf(book_id):
+    file_path = os.path.join(parent_folder, f"{book_id}.pdf")
     subfolder_path = os.path.join(output_folder, book_id)
+
+    if not os.path.exists(file_path):
+        print(f"[SKIP] Fichier source {file_path} inexistant.")
+        return
 
     os.makedirs(subfolder_path, exist_ok=True)
 
@@ -97,14 +101,14 @@ def process_pdf(book_id, file_path):
         if os.path.exists(lock_file):
             with open(lock_file, "r", encoding="utf-8") as f:
                 lock = json.load(f)
-            if lock.get("file") == filename:
+            if lock.get("file") == f"{book_id}.pdf":
                 start_page = lock.get("page", 0)
 
-        print(f"Traitement de {filename} à partir de la page {start_page + 1}")
+        print(f"Traitement du livre {book_id} à partir de la page {start_page + 1}")
 
         # Conversion page par page
         for i in range(start_page, total_pages):
-            print(f"[INFO] Conversion page {i+1}/{total_pages} de {filename}")
+            print(f"[INFO] Conversion page {i+1}/{total_pages} de {book_id}")
             images = convert_from_path(file_path, dpi=200, first_page=i+1, last_page=i+1)
             image = images[0]
             buffer = BytesIO()
@@ -117,20 +121,20 @@ def process_pdf(book_id, file_path):
 
             # Mise à jour du lock
             with open(lock_file, "w", encoding="utf-8") as f_lock:
-                json.dump({"file": filename, "page": i+1}, f_lock)
+                json.dump({"file": f"{book_id}.pdf", "page": i+1}, f_lock)
 
         # Suppression du lock
         if os.path.exists(lock_file):
             os.remove(lock_file)
 
         update_book_status(book_id, status="done", page_count=total_pages)
-        print(f"Traitement terminé pour {filename}")
+        print(f"Traitement terminé pour le livre {book_id}")
 
     except Exception as e:
-        print(f"[ERROR] {filename} : {e}")
+        print(f"[ERROR] Livre {book_id} : {e}")
         error_md = f"""# ❌ Erreur de traitement du livre `{book_id}`
 ## 📄 Fichier
-`{filename}`
+`{book_id}.pdf`
 
 ## 🧨 Exception
 ```text
@@ -159,8 +163,8 @@ def should_process(book):
     2️⃣ status != done & dossier existant & source existe & pages diffèrent
     3️⃣ status = done & dossier existant & source existe & pages diffèrent
     """
-    book_id, filename, status = book
-    source_file = os.path.join(parent_folder, filename)
+    book_id, status = book
+    source_file = os.path.join(parent_folder, f"{book_id}.pdf")
     subfolder_path = os.path.join(output_folder, book_id)
 
     # Cas 1 et 2
@@ -174,7 +178,7 @@ def should_process(book):
                 if source_pages != book_pages:
                     return True
             except Exception as e:
-                print(f"[CHECK ERROR] {filename}: {e}")
+                print(f"[CHECK ERROR] Livre {book_id}: {e}")
                 return True
         return False
 
@@ -186,7 +190,7 @@ def should_process(book):
             if source_pages != book_pages:
                 return True
         except Exception as e:
-            print(f"[CHECK ERROR] {filename}: {e}")
+            print(f"[CHECK ERROR] Livre {book_id}: {e}")
             return True
 
     return False
@@ -201,14 +205,12 @@ if __name__ == "__main__":
             books = get_all_books()
             for book in books:
                 if should_process(book):
-                    book_id, filename, _ = book
-                    source_file = os.path.join(parent_folder, filename)
-                    if os.path.exists(source_file):
-                        process_pdf(book_id, source_file)
-            time.sleep(60*int(os.environ.get("SLEEP_MIN", 1))) # intervalle entre vérifications
+                    book_id, _ = book
+                    process_pdf(book_id)
+            time.sleep(5)  # intervalle entre vérifications
         except KeyboardInterrupt:
             print("Arrêt manuel demandé.")
             break
         except Exception as e:
             print(f"[SERVICE ERROR] {e}")
-            time.sleep(60*int(os.environ.get("SLEEP_MIN", 1)))
+            time.sleep(5)
