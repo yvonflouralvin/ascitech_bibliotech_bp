@@ -37,7 +37,7 @@ def get_all_books():
     try:
         conn = psycopg2.connect(**db_config)
         cur = conn.cursor()
-        cur.execute("SELECT id, status FROM school_book")
+        cur.execute("SELECT id, status, title FROM school_book")
         books = cur.fetchall()
         cur.close()
         conn.close()
@@ -82,12 +82,12 @@ def update_book_status(book_id, status, page_count=None, error_md=None):
 # =============================
 # TRAITEMENT PDF
 # =============================
-def process_pdf(book_id):
+def process_pdf(book_id, book_title):
     file_path = os.path.join(parent_folder, f"{book_id}.pdf")
     subfolder_path = os.path.join(output_folder, book_id)
 
     if not os.path.exists(file_path):
-        print(f"[SKIP] Fichier source {file_path} inexistant.")
+        print(f"[SKIP] Fichier source [{book_title}] {file_path} inexistant.")
         return
 
     os.makedirs(subfolder_path, exist_ok=True)
@@ -104,11 +104,11 @@ def process_pdf(book_id):
             if lock.get("file") == f"{book_id}.pdf":
                 start_page = lock.get("page", 0)
 
-        print(f"Traitement du livre {book_id} à partir de la page {start_page + 1}")
+        print(f"Traitement du livre [{book_title}/>>>{book_id}<<<] à partir de la page {start_page + 1}")
 
         # Conversion page par page
         for i in range(start_page, total_pages):
-            print(f"[INFO] Conversion page {i+1}/{total_pages} de {book_id}")
+            print(f"[INFO] Conversion page {i+1}/{total_pages} de [{book_title}/>>>{book_id}<<<]")
             images = convert_from_path(file_path, dpi=200, first_page=i+1, last_page=i+1)
             image = images[0]
             buffer = BytesIO()
@@ -128,21 +128,21 @@ def process_pdf(book_id):
             os.remove(lock_file)
 
         update_book_status(book_id, status="done", page_count=total_pages)
-        print(f"Traitement terminé pour le livre {book_id}")
+        print(f"Traitement terminé pour le livre [{book_title}/>>>{book_id}<<<]")
 
     except Exception as e:
         print(f"[ERROR] Livre {book_id} : {e}")
-        error_md = f"""# ❌ Erreur de traitement du livre `{book_id}`
-## 📄 Fichier
-`{book_id}.pdf`
+        error_md = f"""# ❌ Erreur de traitement du livre [{book_title}/>>>{book_id}<<<]
+                    ## 📄 Fichier
+                    `{book_id}.pdf`
 
-## 🧨 Exception
-```text
-{str(e)}
+                    ## 🧨 Exception
+                    ```text
+                    {str(e)}
 
-Traceback
-{traceback.format_exc()}
-```"""
+                    Traceback
+                    {traceback.format_exc()}
+                    ```"""
         # Nettoyage fichiers
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -163,7 +163,7 @@ def should_process(book):
     2️⃣ status != done & dossier existant & source existe & pages diffèrent
     3️⃣ status = done & dossier existant & source existe & pages diffèrent
     """
-    book_id, status = book
+    book_id, status, title = book
     source_file = os.path.join(parent_folder, f"{book_id}.pdf")
     subfolder_path = os.path.join(output_folder, book_id)
 
@@ -178,7 +178,7 @@ def should_process(book):
                 if source_pages != book_pages:
                     return True
             except Exception as e:
-                print(f"[CHECK ERROR] Livre {book_id}: {e}")
+                print(f"[CHECK ERROR] Livre [{title}/{book_id}]: {e}")
                 return True
         return False
 
@@ -190,7 +190,7 @@ def should_process(book):
             if source_pages != book_pages:
                 return True
         except Exception as e:
-            print(f"[CHECK ERROR] Livre {book_id}: {e}")
+            print(f"[CHECK ERROR] Livre [{title}/{book_id}]: {e}")
             return True
 
     return False
@@ -205,12 +205,12 @@ if __name__ == "__main__":
             books = get_all_books()
             for book in books:
                 if should_process(book):
-                    book_id, _ = book
-                    process_pdf(book_id)
-            time.sleep(5)  # intervalle entre vérifications
+                    book_id, status, title = book
+                    process_pdf(book_id, title)
+            time.sleep(60* os.environ.get("SLEEP_TIME", 1))  # intervalle entre vérifications
         except KeyboardInterrupt:
             print("Arrêt manuel demandé.")
             break
         except Exception as e:
             print(f"[SERVICE ERROR] {e}")
-            time.sleep(5)
+            time.sleep(60* os.environ.get("SLEEP_TIME", 1))
