@@ -11,7 +11,7 @@ WORKDIR /app
 
 COPY . .
 
-RUN pip install --no-cache-dir PyPDF2 watchdog psycopg2-binary pdf2image pillow
+RUN pip install --no-cache-dir PyPDF2 watchdog psycopg2-binary pdf2image pillow ebooklib beautifulsoup4
 
 # Lance main.py et empêche l'arrêt du container
 CMD sh -c "python main.py || echo 'main.py crashed'; tail -f /dev/null"
