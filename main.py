@@ -135,7 +135,7 @@ def detect_source_file(book_id):
 # CONVERTERS
 # ============================================================
 
-def update_lock(self, page):
+def update_lock(page):
         with open(LOCK_FILE, "w") as f:
             json.dump({"book_id": self.book_id, "page": page}, f)
             
