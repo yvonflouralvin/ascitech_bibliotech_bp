@@ -9,7 +9,7 @@ from io import BytesIO
 from PyPDF2 import PdfReader
 from pdf2image import convert_from_path
 
-from ebooklib import epub
+from ebooklib import epub, ITEM_DOCUMENT
 from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont
 
@@ -175,7 +175,7 @@ class PdfConverter(BaseConverter):
 class EpubConverter(BaseConverter):
     def convert(self):
         book = epub.read_epub(self.source_path)
-        items = [i for i in book.get_items() if i.get_type() == epub.ITEM_DOCUMENT]
+        items = [i for i in book.get_items() if i.get_type() == ITEM_DOCUMENT]
 
         page = 0
         for item in items:
@@ -236,11 +236,12 @@ def process_book(book_id):
     except Exception as e:
         error_md = f"""# ❌ Erreur conversion `{book_id}`
 
-```text
-{str(e)}
+                    ```text
+                    {str(e)}
 
-{traceback.format_exc()}
-```"""
+                    {traceback.format_exc()}
+                    ```"""
+        print(error_md)
         shutil.rmtree(os.path.join(CONTENT_DIR, book_id), ignore_errors=True)
         update_book_status(book_id, "error", error_md=error_md)
 
