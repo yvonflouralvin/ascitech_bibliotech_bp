@@ -135,6 +135,10 @@ def detect_source_file(book_id):
 # CONVERTERS
 # ============================================================
 
+def update_lock(self, page):
+        with open(LOCK_FILE, "w") as f:
+            json.dump({"book_id": self.book_id, "page": page}, f)
+            
 class BaseConverter:
     def __init__(self, source_path, book_id):
         self.source_path = source_path
@@ -166,7 +170,7 @@ class PdfConverter(BaseConverter):
             with open(os.path.join(self.book_dir, f"content_{i+1:03d}.txt"), "w") as f:
                 f.write(encoded)
 
-            self._update_lock(i + 1)
+            update_lock(i + 1)
 
         self._clear_lock()
         return total_pages
@@ -193,7 +197,7 @@ class EpubConverter(BaseConverter):
             with open(os.path.join(self.book_dir, f"content_{page:03d}.txt"), "w") as f:
                 f.write(encoded)
 
-            self._update_lock(page)
+            update_lock(page)
 
         self._clear_lock()
         return page
@@ -203,10 +207,6 @@ class EpubConverter(BaseConverter):
         draw = ImageDraw.Draw(img)
         draw.text((50, 50), text[:4000], fill="black")
         return img
-
-    def _update_lock(self, page):
-        with open(LOCK_FILE, "w") as f:
-            json.dump({"book_id": self.book_id, "page": page}, f)
 
     def _clear_lock(self):
         if os.path.exists(LOCK_FILE):
